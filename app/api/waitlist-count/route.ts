@@ -1,49 +1,48 @@
 import { NextResponse } from "next/server"
-
-// Simple file-based storage for persistence across server restarts
-// In production, you'd use a proper database
-const fs = require("fs").promises
-const path = require("path")
-
-const COUNTER_FILE = path.join(process.cwd(), "waitlist-count.json")
-
-async function getCount() {
-  try {
-    const data = await fs.readFile(COUNTER_FILE, "utf8")
-    const { count } = JSON.parse(data)
-    return count
-  } catch (error) {
-    // If file doesn't exist, start with 344
-    const initialCount = 344
-    await saveCount(initialCount)
-    return initialCount
-  }
-}
-
-async function saveCount(count: number) {
-  try {
-    await fs.writeFile(COUNTER_FILE, JSON.stringify({ count, lastUpdated: new Date().toISOString() }))
-  } catch (error) {
-    console.error("Failed to save count:", error)
-  }
-}
+import { supabase } from "@/lib/supabase"
 
 export async function GET() {
   try {
-    const count = await getCount()
-    return NextResponse.json({ count })
+    // Get the current count from Supabase
+    const { data, error } = await supabase.from("waitlist_counter").select("count").eq("id", 1).single()
+
+    if (error) {
+      console.error("Error fetching count:", error)
+      // If no record exists, create one with initial count
+      if (error.code === "PGRST116") {
+        const { data: newData, error: insertError } = await supabase
+          .from("waitlist_counter")
+          .insert({ id: 1, count: 344 })
+          .select("count")
+          .single()
+
+        if (insertError) {
+          console.error("Error creating initial count:", insertError)
+          return NextResponse.json({ count: 344 })
+        }
+        return NextResponse.json({ count: newData.count })
+      }
+      return NextResponse.json({ count: 344 })
+    }
+
+    return NextResponse.json({ count: data.count })
   } catch (error) {
     console.error("Failed to get count:", error)
-    return NextResponse.json({ count: 344 }) // Fallback
+    return NextResponse.json({ count: 344 })
   }
 }
 
 export async function POST() {
   try {
-    const currentCount = await getCount()
-    const newCount = currentCount + 1
-    await saveCount(newCount)
-    return NextResponse.json({ count: newCount })
+    // Increment the count in Supabase using the RPC function
+    const { data, error } = await supabase.rpc("increment_waitlist_count")
+
+    if (error) {
+      console.error("Error incrementing count:", error)
+      return NextResponse.json({ count: 344 }, { status: 500 })
+    }
+
+    return NextResponse.json({ count: data })
   } catch (error) {
     console.error("Failed to increment count:", error)
     return NextResponse.json({ count: 344 }, { status: 500 })

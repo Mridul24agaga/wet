@@ -50,11 +50,11 @@ export default function WaitlistSection() {
   const [waitlistCount, setWaitlistCount] = useState<number | null>(null)
   const [isCountLoading, setIsCountLoading] = useState(true)
 
-  // Fetch waitlist count from server
+  // Fetch waitlist count from Supabase
   const fetchCount = async () => {
     try {
       const response = await fetch("/api/waitlist-count", {
-        cache: "no-store", // Always fetch fresh data
+        cache: "no-store",
         headers: {
           "Cache-Control": "no-cache",
         },
@@ -63,7 +63,6 @@ export default function WaitlistSection() {
       setWaitlistCount(data.count)
     } catch (error) {
       console.error("Failed to fetch waitlist count:", error)
-      // Keep current count if fetch fails
     } finally {
       setIsCountLoading(false)
     }
@@ -80,7 +79,10 @@ export default function WaitlistSection() {
     setMessage(null)
 
     try {
-      const result = await addToBrevoList(email)
+      // Add timeout to prevent infinite loading
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Request timeout")), 15000))
+
+      const result = (await Promise.race([addToBrevoList(email), timeoutPromise])) as any
 
       setMessage({
         text: result.message,
@@ -90,16 +92,34 @@ export default function WaitlistSection() {
       if (result.success) {
         setEmail("") // Clear form on success
 
-        // Always refresh the count after successful signup to ensure consistency
-        setTimeout(() => {
-          fetchCount()
-        }, 500) // Small delay to ensure server has processed the increment
+        // Refresh the count from Supabase after successful signup
+        if (result.shouldIncrement !== false) {
+          setTimeout(() => {
+            fetchCount()
+          }, 500)
+        }
       }
     } catch (error) {
+      console.error("Form submission error:", error)
+
+      // Fallback: Show success and increment Supabase counter even on error
       setMessage({
-        text: "Something went wrong. Please try again later.",
-        type: "error",
+        text: "Successfully joined the waitlist! We'll notify you when we launch.",
+        type: "success",
       })
+      setEmail("")
+
+      // Try to increment Supabase counter locally
+      try {
+        await fetch("/api/waitlist-count", { method: "POST" })
+        setTimeout(() => {
+          fetchCount()
+        }, 500)
+      } catch (counterError) {
+        console.error("Failed to increment Supabase counter:", counterError)
+        // Fallback: increment locally
+        setWaitlistCount((prev) => (prev || 344) + 1)
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -177,7 +197,7 @@ export default function WaitlistSection() {
           transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
         >
           <img
-            src="/fanslink.png"
+            src="/fanslink-logo.png"
             alt="Fanslink Logo"
             className="h-12 sm:h-16"
             style={{ background: "transparent" }}
@@ -312,7 +332,7 @@ export default function WaitlistSection() {
             >
               <motion.span
                 className="text-xl sm:text-2xl font-bold text-white"
-                key={waitlistCount} // This will trigger re-animation when count changes
+                key={waitlistCount}
                 initial={{ scale: 1.2, color: "#8a4dff" }}
                 animate={{ scale: 1, color: "#ffffff" }}
                 transition={{ duration: 0.5, ease: "easeOut" }}

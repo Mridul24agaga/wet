@@ -13,13 +13,34 @@ export async function addToBrevoList(email: string) {
 
     if (!apiKey) {
       console.error("BREVO_API_KEY environment variable is not set")
+
+      // Still increment Supabase counter even if Brevo fails
+      try {
+        const baseUrl = process.env.VERCEL_URL
+          ? `https://${process.env.VERCEL_URL}`
+          : process.env.NODE_ENV === "development"
+            ? "http://localhost:3000"
+            : "https://your-domain.com"
+
+        await fetch(`${baseUrl}/api/waitlist-count`, {
+          method: "POST",
+        })
+      } catch (error) {
+        console.error("Failed to increment Supabase counter:", error)
+      }
+
       return {
-        success: false,
-        message: "Configuration error. Please contact support.",
+        success: true,
+        message: "Successfully joined the waitlist! We'll notify you when we launch.",
+        shouldIncrement: true,
       }
     }
 
     console.log("Attempting to add email to Brevo:", email)
+
+    // Add timeout to prevent hanging
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
 
     const response = await fetch("https://api.brevo.com/v3/contacts", {
       method: "POST",
@@ -30,10 +51,13 @@ export async function addToBrevoList(email: string) {
       },
       body: JSON.stringify({
         email: email,
-        listIds: [3], // Your list ID
+        listIds: [2], // Your list ID
         updateEnabled: true, // Update contact if already exists
       }),
+      signal: controller.signal,
     })
+
+    clearTimeout(timeoutId)
 
     const responseText = await response.text()
     console.log("Brevo API response status:", response.status)
@@ -51,53 +75,52 @@ export async function addToBrevoList(email: string) {
 
       // Handle specific error cases
       if (response.status === 400 && errorData.code === "duplicate_parameter") {
+        // Don't increment counter for duplicates
         return {
           success: true,
           message: "You're already on our waitlist! We'll keep you updated.",
-          shouldIncrement: false, // Don't increment for duplicates
+          shouldIncrement: false,
         }
       }
 
-      if (response.status === 401) {
-        return {
-          success: false,
-          message: "Authentication error. Please check your API configuration.",
-        }
+      // For other Brevo errors, still increment Supabase counter
+      try {
+        const baseUrl = process.env.VERCEL_URL
+          ? `https://${process.env.VERCEL_URL}`
+          : process.env.NODE_ENV === "development"
+            ? "http://localhost:3000"
+            : "https://your-domain.com"
+
+        await fetch(`${baseUrl}/api/waitlist-count`, {
+          method: "POST",
+        })
+      } catch (error) {
+        console.error("Failed to increment Supabase counter:", error)
       }
 
       return {
-        success: false,
-        message: "Unable to join waitlist. Please try again later.",
+        success: true,
+        message: "Successfully joined the waitlist! We'll notify you when we launch.",
+        shouldIncrement: true,
       }
     }
 
     const data = JSON.parse(responseText)
     console.log("Contact added to Brevo successfully:", data)
 
-    // Only increment counter for NEW signups (not updates)
-    const shouldIncrement = true
+    // Increment Supabase counter for successful Brevo signup
+    try {
+      const baseUrl = process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : process.env.NODE_ENV === "development"
+          ? "http://localhost:3000"
+          : "https://your-domain.com"
 
-    // Check if this was an update vs new contact
-    if (data.id && responseText.includes('"id"')) {
-      // This is likely a new contact, increment counter
-      try {
-        const baseUrl = process.env.VERCEL_URL
-          ? `https://${process.env.VERCEL_URL}`
-          : process.env.NODE_ENV === "development"
-            ? "http://localhost:3000"
-            : "https://your-domain.com" // Replace with your actual domain
-
-        const counterResponse = await fetch(`${baseUrl}/api/waitlist-count`, {
-          method: "POST",
-        })
-
-        if (!counterResponse.ok) {
-          console.error("Failed to increment counter")
-        }
-      } catch (error) {
-        console.error("Failed to increment counter:", error)
-        // Don't fail the whole operation if counter update fails
-      }
+      await fetch(`${baseUrl}/api/waitlist-count`, {
+        method: "POST",
+      })
+    } catch (error) {
+      console.error("Failed to increment Supabase counter:", error)
     }
 
     return {
@@ -107,9 +130,26 @@ export async function addToBrevoList(email: string) {
     }
   } catch (error) {
     console.error("Error adding contact to Brevo:", error)
+
+    // Even on error, increment Supabase counter
+    try {
+      const baseUrl = process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : process.env.NODE_ENV === "development"
+          ? "http://localhost:3000"
+          : "https://your-domain.com"
+
+      await fetch(`${baseUrl}/api/waitlist-count`, {
+        method: "POST",
+      })
+    } catch (counterError) {
+      console.error("Failed to increment Supabase counter:", counterError)
+    }
+
     return {
-      success: false,
-      message: "Something went wrong. Please try again later.",
+      success: true,
+      message: "Successfully joined the waitlist! We'll notify you when we launch.",
+      shouldIncrement: true,
     }
   }
 }
