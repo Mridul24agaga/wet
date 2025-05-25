@@ -197,7 +197,7 @@ export default function WaitlistSection() {
           transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
         >
           <img
-            src="/fanslink-logo.png"
+            src="/fanslink.png"
             alt="Fanslink Logo"
             className="h-12 sm:h-16"
             style={{ background: "transparent" }}
