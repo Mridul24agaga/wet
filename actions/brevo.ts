@@ -51,7 +51,7 @@ export async function addToBrevoList(email: string) {
       },
       body: JSON.stringify({
         email: email,
-        listIds: [2], // Your list ID
+        listIds: [3], // Your list ID
         updateEnabled: true, // Update contact if already exists
       }),
       signal: controller.signal,
